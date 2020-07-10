@@ -4,15 +4,19 @@ import "flag"
 
 // Config - структура описывающая конфиг сервера
 type Config struct {
-	BotToken string `toml:"bot_token"`
-	AuthURL  string `toml:"auth_api_url"`
+	BotToken       string `toml:"bot_token"`
+	AuthURL        string `toml:"auth_api_url"`
+	CheckEmailURL  string `toml:"check_email_api_url"`
+	CheckTGAuthURL string `toml:"check_tg_auth_api_url"`
 }
 
 // NewConfig - создаем новый конфиг
 func NewConfig() *Config {
 	return &Config{
-		BotToken: "null",
-		AuthURL:  "null",
+		BotToken:       "null",
+		AuthURL:        "null",
+		CheckEmailURL:  "null",
+		CheckTGAuthURL: "null",
 	}
 }
 
