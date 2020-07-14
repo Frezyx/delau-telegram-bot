@@ -8,6 +8,7 @@ type Config struct {
 	AuthURL        string `toml:"auth_api_url"`
 	CheckEmailURL  string `toml:"check_email_api_url"`
 	CheckTGAuthURL string `toml:"check_tg_auth_api_url"`
+	LogoutTGURL    string `toml:"logout_tg_api_url"`
 }
 
 // NewConfig - создаем новый конфиг
@@ -17,6 +18,7 @@ func NewConfig() *Config {
 		AuthURL:        "null",
 		CheckEmailURL:  "null",
 		CheckTGAuthURL: "null",
+		LogoutTGURL:    "null",
 	}
 }
 

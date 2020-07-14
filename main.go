@@ -1,25 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/BurntSushi/toml"
 	tgbot "github.com/go-telegram-bot-api/telegram-bot-api"
-)
-
-var numericKeyboard = tgbot.NewReplyKeyboard(
-	tgbot.NewKeyboardButtonRow(
-		tgbot.NewKeyboardButton("/login"),
-		tgbot.NewKeyboardButton("/logout"),
-	),
-	tgbot.NewKeyboardButtonRow(
-		tgbot.NewKeyboardButton("/help"),
-		tgbot.NewKeyboardButton("/info"),
-	),
 )
 
 func main() {
@@ -30,8 +18,6 @@ func main() {
 	}
 	botToken := config.BotToken
 	authURL := config.AuthURL
-	checkEmailURL := config.CheckEmailURL
-	checkTGAuthURL := config.CheckTGAuthURL
 	bot, err := tgbot.NewBotAPI(botToken)
 	if err != nil {
 		log.Panic(err)
@@ -39,6 +25,9 @@ func main() {
 
 	var regRequests map[int64]AuthRequest
 	regRequests = make(map[int64]AuthRequest)
+
+	var isUserStartAuth map[int64]bool
+	isUserStartAuth = make(map[int64]bool)
 
 	bot.Debug = true
 
@@ -51,84 +40,57 @@ func main() {
 		if update.Message == nil {
 			continue
 		}
-		msg := tgbot.NewMessage(update.Message.Chat.ID, "Я не знаю как ответить на этот вопрос 😿")
+		msg := tgbot.NewMessage(update.Message.Chat.ID, "Ошибка")
 
 		switch update.Message.Text {
 		case "/start":
-			msg = tgbot.NewMessage(
-				update.Message.Chat.ID,
-				"Вас приветствует бот Delau 😃\n"+
-					"/login - Чтоб получать уведомления о задачах"+
-					"/help - Все запросы бота")
+			msg = getStartMessage(update)
 		case "/login":
 			chatIDStr := strconv.FormatInt(update.Message.Chat.ID, 10)
-			data, _ := http.Get(checkTGAuthURL + chatIDStr)
+			data, _ := http.Get(config.CheckTGAuthURL + chatIDStr)
 			if data.StatusCode == 200 {
-				msg = tgbot.NewMessage(update.Message.Chat.ID, "✅ Вы уже авторизированы.")
-			} else {
-				//Delete reg data
 				msg = tgbot.NewMessage(
 					update.Message.Chat.ID,
-					"😺Чтобы получать уведомления о задачах из приложения delau, нам нужно понять кто вы такой.")
-				bot.Send(msg)
-				msg = tgbot.NewMessage(update.Message.Chat.ID, "Введите ваш email:")
-			}
-		case "/info":
-			msg = tgbot.NewMessage(update.Message.Chat.ID, "Мы часто проводим время в социальных сетях и мессендерах и забываем про личные дела и задачи Delau - проект, созданный для того, чтоб вы смогли получать уведомления о задачах и делах в вашей любимой социальной сети или мессенджере")
-		case "/help":
-			msg = tgbot.NewMessage(
-				update.Message.Chat.ID,
-				"🤖*Команды бота:*\n"+
-					"/login - Авторизироваться, дла начала работы с ботом\n"+
-					"/logout - Отвязать данный чат от аккаунта и прекратить получать уведомления\n"+
-					"/help - Вывести все команды чата\n"+
-					"/info - Информация о приложении\n")
-			msg.ParseMode = "Markdown"
-		default:
-			if thisReq, ok := regRequests[update.Message.Chat.ID]; ok {
-				thisReq.Password = update.Message.Text
-				regRequests[update.Message.Chat.ID] = thisReq
-				if thisReq.Password != "" && thisReq.Email != "" {
-					crossMsg := tgbot.NewMessage(
-						update.Message.Chat.ID,
-						"✅Вы добавили ваш e-mail.\n"+
-							"✅Вы добавили ваш пароль.\n"+
-							"Проверяем ваш пароль на сервере.")
-					bot.Send(crossMsg)
-					buf, err := json.Marshal(regRequests[update.Message.Chat.ID])
-					if err != nil {
-						msg = tgbot.NewMessage(update.Message.Chat.ID, "Произошла ошибка при авторизации 😿")
-					}
-					data, err := http.Post(authURL, "application/json", bytes.NewBuffer(buf))
-					if data.StatusCode == 200 {
-						msg = tgbot.NewMessage(
-							update.Message.Chat.ID,
-							"😃 Отлично\n"+
-								"✅ Вы прошли авторизацию.\n"+
-								"⏰ Теперь вы получаете уведомления от приложения Dealu")
-						regRequests[update.Message.Chat.ID] = AuthRequest{}
-					} else {
-						msg = tgbot.NewMessage(update.Message.Chat.ID, "Произошла ошибка при авторизации 😿")
-					}
-				} else {
+					"⚠️ Вы уже авторизированы.\n"+
+						"Если хотите выйти ➡️ /logout")
+				if _, ok := isUserStartAuth[update.Message.Chat.ID]; ok {
+					isUserStartAuth[update.Message.Chat.ID] = false
 				}
 			} else {
-				if update.Message.Text != "" {
-					data, _ := http.Get(checkEmailURL + update.Message.Text)
-					if data.StatusCode == 200 {
-						msg = tgbot.NewMessage(update.Message.Chat.ID, "✅Вы добавили ваш e-mail.\nТеперь введите ваш пароль :")
-						regRequests[update.Message.Chat.ID] = AuthRequest{
-							Email:    update.Message.Text,
-							Password: "",
-							ChatID:   update.Message.Chat.ID,
-						}
-					} else {
-						msg = tgbot.NewMessage(update.Message.Chat.ID, "Такого email не существует 😿")
-					}
+				if _, ok := isUserStartAuth[update.Message.Chat.ID]; ok {
+					isUserStartAuth[update.Message.Chat.ID] = true
+				} else {
+					isUserStartAuth[update.Message.Chat.ID] = true
 				}
+				msg = getEmailListenerMessage(update, bot)
+			}
+		case "/logout":
+			data, _ := http.Get(
+				config.LogoutTGURL + strconv.FormatInt(update.Message.Chat.ID, 10))
+			if data.StatusCode == 200 {
+				msg = tgbot.NewMessage(
+					update.Message.Chat.ID,
+					"✅ Вы отвязали чат от вашего аккаунта.\n"+
+						"Больше вы не получаете уведомления от бота.")
+			} else {
+				msg = tgbot.NewMessage(
+					update.Message.Chat.ID,
+					"❌ Ваш чат не привязан ни к отдному аккаунту")
+			}
+		case "/info":
+			msg = getInfoMessage(update)
+		case "/help":
+			msg = getHelpMessage(update)
+		default:
+			if _, ok := isUserStartAuth[update.Message.Chat.ID]; ok {
+				if isUserStartAuth[update.Message.Chat.ID] {
+					msg = listenAuth(update, regRequests, bot, authURL, config.CheckEmailURL)
+				}
+			} else {
+				msg = tgbot.NewMessage(update.Message.Chat.ID, "😿 Я не знаю как ответить на этот вопрос\n"+"Попробуйте что-то отсюда ➡️ /help"+fmt.Sprintf("%t", isUserStartAuth[update.Message.Chat.ID]))
 			}
 		}
-		msg.ReplyMarkup = numericKeyboard
+		msg.ReplyMarkup = кeyboard
 		bot.Send(msg)
 	}
 }
